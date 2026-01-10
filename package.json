@@ -11,9 +11,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@google/genai": "^1.25.0",
+    "@google/genai": "^1.35.0",
+    "@vercel/kv": "^1.0.1",
+    "@vercel/ratelimit": "^2.0.0",
     "dotenv": "^17.2.3",
-    "express": "^5.1.0",
-    "git": "^0.1.5"
+    "express": "^5.1.0"
   }
 }
