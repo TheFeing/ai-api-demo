@@ -1,16 +1,15 @@
-import { GoogleGenAI } from '@google/genai';
+import { createGenAI } from '@google/genai';
 import { Ratelimit } from '@vercel/ratelimit';
 import { kv } from '@vercel/kv';
 
-// Initialise Rate Limiting via Marketplace KV (Upstash)
-// Allow 5 requests per 60 seconds per IP address
+// Initialise Rate Limiting via Vercel KV
 const ratelimit = new Ratelimit({
   redis: kv,
   limiter: Ratelimit.slidingWindow(5, '60 s'),
 });
 
-// The SDK automatically picks up GEMINI_API_KEY from environment variables
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Initialise the latest Google Gen AI Client
+const client = createGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const MAX_LENGTH = 1200; 
 
 export default async function handler(request, response) {
@@ -20,14 +19,18 @@ export default async function handler(request, response) {
 
     // Rate Limit Check
     const ip = request.headers['x-forwarded-for'] || '127.0.0.1';
-    const { success, reset } = await ratelimit.limit(`ratelimit_${ip}`);
-
-    if (!success) {
-        return response.status(429).json({
-            error: 'Rate limit exceeded',
-            message: 'To keep this demo free, please wait a moment.',
-            resetAt: new Date(reset).toLocaleTimeString('en-GB')
-        });
+    try {
+        const { success, reset } = await ratelimit.limit(`ratelimit_${ip}`);
+        if (!success) {
+            return response.status(429).json({
+                error: 'Rate limit exceeded',
+                message: 'To keep this demo free, please wait a moment.',
+                resetAt: new Date(reset).toLocaleTimeString('en-GB')
+            });
+        }
+    } catch (error) {
+        console.error('KV Error:', error);
+        // If KV fails, we log it but continue so the site doesn't break
     }
 
     const { userContent } = request.body;
@@ -38,18 +41,17 @@ export default async function handler(request, response) {
     }
 
     try {
-        const result = await ai.models.generateContent({
-            model: 'gemini-1.5-flash', 
+        // Modern syntax for Gemini 1.5 Flash
+        const result = await client.models.generateContent({
+            model: 'gemini-1.5-flash',
             contents: [{ role: 'user', parts: [{ text: userContent }] }],
             config: {
-                systemInstruction: { 
-                    parts: [{ text: "Evaluate safety and respond in JSON format. Provide a 'safe' boolean and 'reason' string." }] 
-                },
+                systemInstruction: "Evaluate safety and respond in JSON format. Provide a 'safe' boolean and 'reason' string.",
                 responseMimeType: "application/json"
             }
         });
 
-        // Extract the text from the result
+        // Extracting text from the latest SDK response object
         const output = result.candidates?.[0]?.content?.parts?.[0]?.text;
         
         if (!output) {
@@ -59,8 +61,10 @@ export default async function handler(request, response) {
         return response.status(200).json(JSON.parse(output));
 
     } catch (error) {
-        // Sanitised Error Reporting
         console.error('Moderation Failure:', error);
-        return response.status(500).json({ error: 'Moderation service temporarily unavailable.' });
+        return response.status(500).json({ 
+            error: 'Moderation service temporarily unavailable.',
+            details: error.message 
+        });
     }
 }
