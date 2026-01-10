@@ -1,20 +1,12 @@
 {
   "name": "gemini-moderation-proxy",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
   "type": "module",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "@google/genai": "latest",
-    "@vercel/kv": "latest",
-    "@vercel/ratelimit": "^1.0.0",
-    "dotenv": "^17.2.3",
-    "express": "^5.1.0"
+    "@google/genai": "1.35.0",
+    "@vercel/kv": "1.0.1",
+    "@vercel/ratelimit": "1.0.0",
+    "dotenv": "16.4.5",
+    "express": "4.19.2"
   }
 }
