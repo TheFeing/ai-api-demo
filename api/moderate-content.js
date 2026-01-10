@@ -1,5 +1,5 @@
 import { createGenAI } from '@google/genai';
-import { Ratelimit } from '@vercel/ratelimit';
+import { Ratelimit } from '@upstash/ratelimit';
 import { kv } from '@vercel/kv';
 
 // Initialise Rate Limiting via Vercel KV
