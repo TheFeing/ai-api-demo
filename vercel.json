@@ -1,3 +1,3 @@
 {
-  "installCommand": "npm install --registry=https://registry.npmjs.org/ --no-package-lock"
+  "installCommand": "npm config delete _authToken && npm install --registry=https://registry.npmjs.org/ --no-package-lock"
 }
