@@ -1,72 +1,67 @@
-import GenAI from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Ratelimit } from "@upstash/ratelimit";
 import { kv } from "@vercel/kv";
 
 // Rate limiting
 const ratelimit = new Ratelimit({
-  redis: kv,
-  limiter: Ratelimit.slidingWindow(5, "60 s"),
+    redis: kv,
+    limiter: Ratelimit.slidingWindow(5, "60 s"),
 });
 
 // Google GenAI client
-const genAI = new GenAI({
-  apiKey: process.env.GOOGLE_API_KEY
-});
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 
 const MAX_LENGTH = 1200;
 
 export default async function handler(request, response) {
-  if (request.method !== "POST") {
-    return response.status(405).json({ error: "Method Not Allowed" });
-  }
-
-  // Rate limit
-  const ip = request.headers["x-forwarded-for"] || "127.0.0.1";
-  try {
-    const { success, reset } = await ratelimit.limit(`ratelimit_${ip}`);
-    if (!success) {
-      return response.status(429).json({
-        error: "Rate limit exceeded",
-        message: "To keep this demo free, please wait a moment.",
-        resetAt: new Date(reset).toLocaleTimeString("en-GB"),
-      });
-    }
-  } catch (error) {
-    console.error("KV Error:", error);
-  }
-
-  const { userContent } = request.body;
-
-  if (!userContent || typeof userContent !== "string" || userContent.length > MAX_LENGTH) {
-    return response.status(400).json({ error: "Invalid or overly long content." });
-  }
-
-  try {
-    const result = await client.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: userContent }],
-        },
-      ],
-      systemInstruction:
-        "Evaluate safety and respond in JSON format. Provide a 'safe' boolean and 'reason' string.",
-      responseMimeType: "application/json",
-    });
-
-    const output = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!output) {
-      throw new Error("No content returned from AI");
+    if (request.method !== "POST") {
+        return response.status(405).json({ error: "Method Not Allowed" });
     }
 
-    return response.status(200).json(JSON.parse(output));
-  } catch (error) {
-    console.error("Moderation Failure:", error);
-    return response.status(500).json({
-      error: "Moderation service temporarily unavailable.",
-      details: error.message,
-    });
-  }
+    // Rate limit
+    const ip = request.headers["x-forwarded-for"] || "127.0.0.1";
+    try {
+        const { success, reset } = await ratelimit.limit(`ratelimit_${ip}`);
+        if (!success) {
+            return response.status(429).json({
+                error: "Rate limit exceeded",
+                message: "To keep this demo free, please wait a moment.",
+                resetAt: new Date(reset).toLocaleTimeString("en-GB"),
+            });
+        }
+    } catch (error) {
+        console.error("KV Error:", error);
+    }
+
+    const { userContent } = request.body;
+
+    if (!userContent || typeof userContent !== "string" || userContent.length > MAX_LENGTH) {
+        return response.status(400).json({ error: "Invalid or overly long content." });
+    }
+
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+        const result = await model.generateContent({
+            contents: [
+                {
+                    role: "user",
+                    parts: [{ text: userContent }],
+                },
+            ],
+            systemInstruction:
+                "Evaluate safety and respond in JSON format. Provide a 'safe' boolean and 'reason' string.",
+            responseMimeType: "application/json",
+        });
+
+        const output = result.response.text();
+
+        return response.status(200).json(JSON.parse(output));
+    } catch (error) {
+        console.error("Moderation Failure:", error);
+        return response.status(500).json({
+            error: "Moderation service temporarily unavailable.",
+            details: error.message,
+        });
+    }
 }
