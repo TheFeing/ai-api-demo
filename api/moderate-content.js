@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "@google/genai";
 import { Ratelimit } from "@upstash/ratelimit";
 import { kv } from "@vercel/kv";
 
@@ -8,8 +8,10 @@ const ratelimit = new Ratelimit({
   limiter: Ratelimit.slidingWindow(5, "60 s"),
 });
 
-// Google GenAI client
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Google Gen AI client (new SDK)
+const genAI = new GoogleGenerativeAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
 
 const MAX_LENGTH = 1200;
 
@@ -40,7 +42,9 @@ export default async function handler(request, response) {
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+    });
 
     const result = await model.generateContent({
       contents: [
