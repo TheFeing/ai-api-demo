@@ -1,87 +1,105 @@
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Ratelimit } from "@upstash/ratelimit";
 import { kv } from "@vercel/kv";
 
+// Rate limiting
 const ratelimit = new Ratelimit({
-    redis: kv,
-    limiter: Ratelimit.slidingWindow(5, "60 s"),
+  redis: kv,
+  limiter: Ratelimit.slidingWindow(5, "60 s"),
 });
 
+// Google GenAI client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
 const MAX_LENGTH = 1200;
 
-// Essential configuration to ensure the AI analyses content without being pre-emptively blocked
-const safetySettings = [
-    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-];
-
 export default async function handler(request, response) {
-    if (request.method !== "POST") return response.status(405).json({ error: "Method Not Allowed" });
+  if (request.method !== "POST") {
+    return response.status(405).json({ error: "Method Not Allowed" });
+  }
 
-    const ip = request.headers["x-forwarded-for"] || "127.0.0.1";
-    
-    // Guaranteed structure to satisfy index.html requirements
-    const createStructure = (safe, reason, categories = []) => ({
-        post: {
-            moderation: {
-                safe: safe,
-                reason: reason,
-                categories_flagged: categories
-            }
-        }
+  // Rate limit
+  const ip = request.headers["x-forwarded-for"] || "127.0.0.1";
+  try {
+    const { success, reset } = await ratelimit.limit(`ratelimit_${ip}`);
+    if (!success) {
+      return response.status(429).json({
+        error: "Rate limit exceeded",
+        message: "To keep this demo free, please wait a moment.",
+        resetAt: new Date(reset).toLocaleTimeString("en-GB"),
+      });
+    }
+  } catch (error) {
+    console.error("KV Error:", error);
+  }
+
+  const { userContent } = request.body;
+
+  if (!userContent || typeof userContent !== "string" || userContent.length > MAX_LENGTH) {
+    return response.status(400).json({ error: "Invalid or overly long content." });
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const result = await model.generateContent({
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: userContent }],
+        },
+      ],
+      systemInstruction: `
+You are a strict content safety moderator.
+
+Analyze the user content and respond ONLY with a single JSON object in this exact shape:
+
+{
+  "is_safe": boolean,
+  "moderator_comment": string,
+  "categories_flagged": string[]
+}
+
+Rules:
+- "is_safe": true if the content is allowed for a general social media feed; false if it should be blocked.
+- "moderator_comment": a short, clear explanation suitable for end users (1–2 sentences).
+- "categories_flagged": an array of high-level categories (e.g. "Violence", "Hate", "Harassment", "Sexual Content", "Self-harm", "Drugs", "Spam"). Use [] if is_safe is true.
+- Do NOT include any other fields.
+- Do NOT wrap the JSON in backticks or markdown.
+      `.trim(),
     });
 
+    const rawText = result.response.text();
+
+    let parsed;
     try {
-        const { success } = await ratelimit.limit(`ratelimit_${ip}`);
-        if (!success) {
-            return response.status(429).json(createStructure(false, "Rate limit exceeded. Please wait."));
-        }
-    } catch (e) { console.error("KV Error:", e); }
-
-    const { userContent } = request.body;
-    if (!userContent) return response.status(400).json(createStructure(false, "No text provided."));
-
-    try {
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-2.5-flash-lite",
-            generationConfig: { 
-                responseMimeType: "application/json",
-                temperature: 0.1 
-            },
-            safetySettings,
-        });
-
-        const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: userContent }] }],
-            systemInstruction: 
-                "Analyse the text for moderation. Return JSON with keys: 'safe' (boolean), 'reason' (string), and 'categories_flagged' (array). " +
-                "Categories must be one or more of: harassment, hate_speech, sexually_explicit, dangerous. " +
-                "If safe, reason must be 'Content is safe' and categories_flagged must be []."
-        });
-
-        // 2026 Safety Check: Handles cases where the model returns an empty text block
-        const candidate = result.response.candidates[0];
-        if (candidate.finishReason === "SAFETY") {
-            return response.status(200).json(createStructure(false, "Blocked by automated safety filters.", ["safety_policy"]));
-        }
-
-        const rawOutput = result.response.text();
-        const cleanJson = rawOutput.replace(/```json|```/g, "").trim();
-        const parsed = JSON.parse(cleanJson);
-
-        // Map parsed data into the post.moderation structure
-        return response.status(200).json(createStructure(
-            parsed.safe ?? true,
-            parsed.reason || (parsed.safe ? "Content is safe" : "Policy violation"),
-            Array.isArray(parsed.categories_flagged) ? parsed.categories_flagged : []
-        ));
-
-    } catch (error) {
-        console.error("Moderation Failure:", error);
-        // Fallback ensures index.html logic (post.moderation.categories_flagged) never fails
-        return response.status(200).json(createStructure(true, "Moderation check bypassed due to error."));
+      parsed = JSON.parse(rawText);
+    } catch (parseError) {
+      console.error("Failed to parse model JSON:", rawText, parseError);
+      return response.status(500).json({
+        error: "Failed to parse moderation response.",
+        details: "Model returned invalid JSON.",
+      });
     }
+
+    // Normalize to guarantee the shape the frontend expects
+    const normalized = {
+      is_safe: Boolean(parsed.is_safe),
+      moderator_comment:
+        typeof parsed.moderator_comment === "string" && parsed.moderator_comment.trim().length > 0
+          ? parsed.moderator_comment.trim()
+          : "No moderator comment provided.",
+      categories_flagged: Array.isArray(parsed.categories_flagged)
+        ? parsed.categories_flagged.map(String)
+        : [],
+    };
+
+    return response.status(200).json(normalized);
+  } catch (error) {
+    console.error("Moderation Failure:", error);
+    return response.status(500).json({
+      error: "Moderation service temporarily unavailable.",
+      details: error.message,
+    });
+  }
 }
