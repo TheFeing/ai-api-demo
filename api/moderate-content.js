@@ -19,9 +19,14 @@ function censorProfanity(text) {
 
   for (const word of badWords) {
     const regex = new RegExp(word, "gi");
-    const replacement =
-      word[0] + "*".repeat(Math.max(2, word.length - 2)) + word[word.length - 1];
-    censored = censored.replace(regex, replacement);
+
+    censored = censored.replace(regex, (match) => {
+      // Example: "fuck" → "f**k"
+      if (match.length <= 2) {
+        return match[0] + "*";
+      }
+      return match[0] + "*".repeat(match.length - 2) + match[match.length - 1];
+    });
   }
 
   return censored;
