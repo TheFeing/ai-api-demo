@@ -37,17 +37,19 @@ export default async function handler(request, response) {
 
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: userContent }] }],
-            systemInstruction: "Evaluate safety. Return JSON: { \"safe\": bool, \"reason\": \"string\", \"categories_flagged\": [] }"
+            systemInstruction: "Moderator: Return JSON with keys 'safe' (bool), 'reason' (string), and 'categories_flagged' (array)."
         });
 
-        // Handle internal Google safety blocks
+        // Handle internal safety blocks from Google
         const candidate = result.response.candidates[0];
         if (candidate.finishReason === "SAFETY") {
             return response.status(200).json({
-                moderation: {
-                    safe: false,
-                    reason: "Blocked by provider safety filters.",
-                    categories_flagged: ["Safety Policy"]
+                post: {
+                    moderation: {
+                        safe: false,
+                        reason: "Blocked by provider safety filters.",
+                        categories_flagged: ["Safety Policy"]
+                    }
                 }
             });
         }
@@ -56,22 +58,27 @@ export default async function handler(request, response) {
         const cleanJson = rawOutput.replace(/```json|```/g, "").trim();
         const parsed = JSON.parse(cleanJson);
 
-        // --- THE FIX: NEST DATA INSIDE 'moderation' OBJECT ---
+        // --- THE CRITICAL FIX FOR THEFEING FRONTEND ---
+        // Nest everything inside 'post' and then 'moderation'
         return response.status(200).json({
-            moderation: {
-                safe: parsed.safe ?? true,
-                reason: parsed.reason || (parsed.safe ? "Content is safe" : "Policy violation"),
-                categories_flagged: Array.isArray(parsed.categories_flagged) ? parsed.categories_flagged : []
+            post: {
+                moderation: {
+                    safe: parsed.safe ?? true,
+                    reason: parsed.reason || (parsed.safe ? "Content is safe" : "Policy violation"),
+                    categories_flagged: Array.isArray(parsed.categories_flagged) ? parsed.categories_flagged : []
+                }
             }
         });
 
     } catch (error) {
         console.error("Moderation Failure:", error);
         return response.status(200).json({
-            moderation: {
-                safe: true,
-                reason: "Bypassed due to system error.",
-                categories_flagged: []
+            post: {
+                moderation: {
+                    safe: true,
+                    reason: "Bypassed due to system error.",
+                    categories_flagged: []
+                }
             }
         });
     }
