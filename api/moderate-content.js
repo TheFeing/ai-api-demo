@@ -1,4 +1,4 @@
-import { GenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/genai";
 import { Ratelimit } from "@upstash/ratelimit";
 import { kv } from "@vercel/kv";
 
@@ -9,9 +9,7 @@ const ratelimit = new Ratelimit({
 });
 
 // Google GenAI client
-const client = new GenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
 
 const MAX_LENGTH = 1200;
 
