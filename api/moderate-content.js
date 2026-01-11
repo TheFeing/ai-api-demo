@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Ratelimit } from "@upstash/ratelimit";
 import { kv } from "@vercel/kv";
 
-// Rate limiting
+// Rate limiting setup
 const ratelimit = new Ratelimit({
     redis: kv,
     limiter: Ratelimit.slidingWindow(5, "60 s"),
@@ -18,7 +18,7 @@ export default async function handler(request, response) {
         return response.status(405).json({ error: "Method Not Allowed" });
     }
 
-    // Rate limit
+    // Rate limit check
     const ip = request.headers["x-forwarded-for"] || "127.0.0.1";
     try {
         const { success, reset } = await ratelimit.limit(`ratelimit_${ip}`);
@@ -40,7 +40,13 @@ export default async function handler(request, response) {
     }
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+        // Updated model with JSON enforcement
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-2.5-flash-lite",
+            generationConfig: {
+                responseMimeType: "application/json",
+            }
+        });
 
         const result = await model.generateContent({
             contents: [
@@ -50,12 +56,16 @@ export default async function handler(request, response) {
                 },
             ],
             systemInstruction:
-                "Evaluate safety and respond in JSON format. Provide a 'safe' boolean and 'reason' string."
+                "Evaluate safety and respond in JSON format only. Provide a 'safe' boolean and 'reason' string."
         });
 
-        const output = result.response.text();
+        const rawOutput = result.response.text();
+        
+        // Final safety layer: strip any potential Markdown code blocks
+        const cleanJson = rawOutput.replace(/```json|```/g, "").trim();
 
-        return response.status(200).json(JSON.parse(output));
+        return response.status(200).json(JSON.parse(cleanJson));
+
     } catch (error) {
         console.error("Moderation Failure:", error);
         return response.status(500).json({
