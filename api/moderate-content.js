@@ -2,6 +2,31 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Ratelimit } from "@upstash/ratelimit";
 import { kv } from "@vercel/kv";
 
+// Profanity censorship
+function censorProfanity(text) {
+  const badWords = [
+    "fuck",
+    "shit",
+    "bitch",
+    "asshole",
+    "bastard",
+    "dick",
+    "piss",
+    "cunt"
+  ];
+
+  let censored = text;
+
+  for (const word of badWords) {
+    const regex = new RegExp(word, "gi");
+    const replacement =
+      word[0] + "*".repeat(Math.max(2, word.length - 2)) + word[word.length - 1];
+    censored = censored.replace(regex, replacement);
+  }
+
+  return censored;
+}
+
 // Rate limiting
 const ratelimit = new Ratelimit({
   redis: kv,
@@ -68,6 +93,12 @@ Rules:
 - "categories_flagged": an array of high-level categories (e.g. "Violence", "Hate", "Harassment", "Sexual Content", "Self-harm", "Drugs", "Spam"). Use [] if is_safe is true.
 - Do NOT include any other fields.
 - Do NOT wrap the JSON in backticks or markdown.
+
+Additional rules for profanity:
+- If the content contains profanity (e.g., "fuck", "shit", "bitch"), classify it under the category "Profanity".
+- Profanity alone should NOT make the content unsafe. Set "is_safe": true for profanity-only content.
+- Still include "Profanity" in "categories_flagged" so the backend can censor it.
+
       `.trim(),
     });
 
@@ -96,7 +127,18 @@ Rules:
         : [],
     };
 
-    return response.status(200).json(normalized);
+    // Apply profanity censorship if needed
+    let censoredContent = userContent;
+    
+    if (normalized.is_safe && normalized.categories_flagged.includes("Profanity")) {
+      censoredContent = censorProfanity(userContent);
+    }
+    
+    return response.status(200).json({
+      ...normalized,
+      censored_content: censoredContent
+    });
+    
   } catch (error) {
     console.error("Moderation Failure:", error);
     return response.status(500).json({
