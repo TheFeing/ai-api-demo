@@ -21,7 +21,6 @@ function censorProfanity(text) {
     const regex = new RegExp(word, "gi");
 
     censored = censored.replace(regex, (match) => {
-      // Example: "fuck" → "f**k"
       if (match.length <= 2) {
         return match[0] + "*";
       }
@@ -99,10 +98,10 @@ Rules:
 - Do NOT include any other fields.
 - Do NOT wrap the JSON in backticks or markdown.
 
-Additional rules for profanity:
-- If the content contains profanity (e.g., "fuck", "shit", "bitch"), classify it under the category "Profanity".
+Additional profanity rules:
+- ANY profanity (e.g., "fuck", "shit", "bitch", "dick", "cunt", "asshole") MUST be added to "categories_flagged" as "Profanity".
 - Profanity alone should NOT make the content unsafe. Set "is_safe": true for profanity-only content.
-- Still include "Profanity" in "categories_flagged" so the backend can censor it.
+- ALWAYS include "Profanity" in "categories_flagged" when profanity is present, even inside larger words (e.g., "ifuckingloveit", "janecunt", "peterdickhead").
 
       `.trim(),
     });
@@ -134,8 +133,10 @@ Additional rules for profanity:
 
     // Apply profanity censorship if needed
     let censoredContent = userContent;
-    
-    if (normalized.is_safe && normalized.categories_flagged.includes("Profanity")) {
+
+  
+    // Always censor profanity in safe content
+    if (normalized.is_safe) {
       censoredContent = censorProfanity(userContent);
     }
     
