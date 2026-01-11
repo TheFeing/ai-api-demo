@@ -18,18 +18,28 @@ function censorProfanity(text) {
   let censored = text;
 
   for (const word of badWords) {
-    const regex = new RegExp(word, "gi");
+    // Match profanity even inside other words, even if partially censored
+    const regex = new RegExp(word.split("").join("[*]*"), "gi");
 
     censored = censored.replace(regex, (match) => {
-      if (match.length <= 2) {
-        return match[0] + "*";
+      // Remove existing asterisks to normalise the profanity
+      const cleaned = match.replace(/\*/g, "");
+
+      if (cleaned.length <= 2) {
+        return cleaned[0] + "*";
       }
-      return match[0] + "*".repeat(match.length - 2) + match[match.length - 1];
+
+      return (
+        cleaned[0] +
+        "*".repeat(cleaned.length - 2) +
+        cleaned[cleaned.length - 1]
+      );
     });
   }
 
   return censored;
 }
+
 
 // Rate limiting
 const ratelimit = new Ratelimit({
