@@ -40,7 +40,7 @@ export default async function handler(request, response) {
     }
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-8b" });
 
         const result = await model.generateContent({
             contents: [
