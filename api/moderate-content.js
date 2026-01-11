@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Ratelimit } from "@upstash/ratelimit";
 import { kv } from "@vercel/kv";
 
@@ -8,10 +8,8 @@ const ratelimit = new Ratelimit({
   limiter: Ratelimit.slidingWindow(5, "60 s"),
 });
 
-// Google Gen AI client (new SDK)
-const genAI = new GoogleGenerativeAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+// Google GenAI client (older but stable SDK)
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const MAX_LENGTH = 1200;
 
@@ -56,7 +54,7 @@ export default async function handler(request, response) {
       systemInstruction: `
 You are a strict content safety moderator.
 
-Analyze the user content and respond ONLY with a single JSON object in this exact shape:
+Respond ONLY with a single JSON object in this exact shape:
 
 {
   "is_safe": boolean,
