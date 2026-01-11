@@ -18,22 +18,13 @@ function censorProfanity(text) {
   let output = text;
 
   for (const word of badWords) {
-    // Build a regex that matches:
-    // - the raw word
-    // - partially censored versions (f*ck, f**k, s***, etc.)
-    // - the word inside larger strings
-    const pattern = word
-      .split("")
-      .map(ch => `[${ch}${ch.toUpperCase()}*]`)
-      .join("");
-
-    const regex = new RegExp(pattern, "g");
+    // Match profanity even if partially censored or followed by punctuation
+    const regex = new RegExp(word, "gi");
 
     output = output.replace(regex, (match) => {
-      // Normalize: remove existing asterisks
-      const cleaned = match.replace(/\*/g, "");
+      const cleaned = match.toLowerCase();
 
-      // Style A: keep first + last letter, censor middle
+      // Style A: f**k, sh*t, c**t, d**k
       if (cleaned.length <= 2) {
         return cleaned[0] + "*";
       }
@@ -45,6 +36,9 @@ function censorProfanity(text) {
       );
     });
   }
+
+  // Normalize partially censored profanity 
+  output = output.replace(/\*+/g, "*");
 
   return output;
 }
@@ -161,10 +155,8 @@ Additional profanity rules:
     let censoredContent = userContent;
 
   
-    // Always censor profanity in safe content
-    if (normalized.is_safe) {
-      censoredContent = censorProfanity(userContent);
-    }
+    // Always censor profanity
+    censoredContent = censorProfanity(userContent);
     
     return response.status(200).json({
       ...normalized,
