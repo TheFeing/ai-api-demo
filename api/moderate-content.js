@@ -9,7 +9,7 @@ const ratelimit = new Ratelimit({
 });
 
 // Google GenAI client
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const MAX_LENGTH = 1200;
 
