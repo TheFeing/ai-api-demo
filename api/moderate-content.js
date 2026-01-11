@@ -10,8 +10,6 @@ const ratelimit = new Ratelimit({
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const MAX_LENGTH = 1200;
 
-// --- SAFETY CONFIGURATION ---
-// Setting these to BLOCK_ONLY_HIGH prevents 'false positives' on safe text.
 const safetySettings = [
     { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
     { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
@@ -20,9 +18,7 @@ const safetySettings = [
 ];
 
 export default async function handler(request, response) {
-    if (request.method !== "POST") {
-        return response.status(405).json({ error: "Method Not Allowed" });
-    }
+    if (request.method !== "POST") return response.status(405).json({ error: "Method Not Allowed" });
 
     const ip = request.headers["x-forwarded-for"] || "127.0.0.1";
     try {
@@ -36,35 +32,47 @@ export default async function handler(request, response) {
         const model = genAI.getGenerativeModel({ 
             model: "gemini-2.5-flash-lite",
             generationConfig: { responseMimeType: "application/json" },
-            safetySettings, // Applied the block here
+            safetySettings,
         });
 
         const result = await model.generateContent({
             contents: [{ role: "user", parts: [{ text: userContent }] }],
-            systemInstruction: 
-                "Return JSON with: 'safe' (boolean), 'reason' (string), and 'categories_flagged' (array). " +
-                "If content is safe, set 'reason' to 'Content is safe' and 'categories_flagged' to []."
+            systemInstruction: "Evaluate safety. Return JSON: { \"safe\": bool, \"reason\": \"string\", \"categories_flagged\": [] }"
         });
+
+        // Handle internal Google safety blocks
+        const candidate = result.response.candidates[0];
+        if (candidate.finishReason === "SAFETY") {
+            return response.status(200).json({
+                moderation: {
+                    safe: false,
+                    reason: "Blocked by provider safety filters.",
+                    categories_flagged: ["Safety Policy"]
+                }
+            });
+        }
 
         const rawOutput = result.response.text();
         const cleanJson = rawOutput.replace(/```json|```/g, "").trim();
         const parsed = JSON.parse(cleanJson);
 
-        // Map to exact frontend keys to avoid 'undefined'
-        const finalResponse = {
-            safe: parsed.safe ?? true,
-            reason: parsed.reason || (parsed.safe ? "Content is safe" : "Policy violation"),
-            categories_flagged: parsed.categories_flagged || []
-        };
-
-        return response.status(200).json(finalResponse);
+        // --- THE FIX: NEST DATA INSIDE 'moderation' OBJECT ---
+        return response.status(200).json({
+            moderation: {
+                safe: parsed.safe ?? true,
+                reason: parsed.reason || (parsed.safe ? "Content is safe" : "Policy violation"),
+                categories_flagged: Array.isArray(parsed.categories_flagged) ? parsed.categories_flagged : []
+            }
+        });
 
     } catch (error) {
         console.error("Moderation Failure:", error);
         return response.status(200).json({
-            safe: true,
-            reason: "Safety check bypassed due to a system error.",
-            categories_flagged: []
+            moderation: {
+                safe: true,
+                reason: "Bypassed due to system error.",
+                categories_flagged: []
+            }
         });
     }
 }
