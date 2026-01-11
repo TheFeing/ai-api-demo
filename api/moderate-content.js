@@ -18,31 +18,32 @@ function censorProfanity(text) {
   let output = text;
 
   for (const word of badWords) {
-    // Match profanity even if partially censored or followed by punctuation
+    // Detect profanity inside ANY word, even with punctuation
     const regex = new RegExp(word, "gi");
 
     output = output.replace(regex, (match) => {
-      const cleaned = match.toLowerCase();
+      const lower = match.toLowerCase();
 
-      // Style A: f**k, sh*t, c**t, d**k
-      if (cleaned.length <= 2) {
-        return cleaned[0] + "*";
+      // Style A: keep first + last letter
+      if (lower.length <= 2) {
+        return lower[0] + "*";
       }
 
       return (
-        cleaned[0] +
-        "*".repeat(cleaned.length - 2) +
-        cleaned[cleaned.length - 1]
+        lower[0] +
+        "*".repeat(lower.length - 2) +
+        lower[lower.length - 1]
       );
     });
   }
 
-  // Normalize partially censored profanity 
-  output = output.replace(/\*+/g, "*");
+  // Handle partially censored profanity like f***ing, s***
+  output = output.replace(/([a-zA-Z])\*+([a-zA-Z])/g, (m, a, b) => {
+    return a + "*" + b;
+  });
 
   return output;
 }
-
 
 // Rate limiting
 const ratelimit = new Ratelimit({
