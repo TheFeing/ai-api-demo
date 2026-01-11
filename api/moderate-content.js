@@ -15,16 +15,25 @@ function censorProfanity(text) {
     "cunt"
   ];
 
-  let censored = text;
+  let output = text;
 
   for (const word of badWords) {
-    // Match profanity even inside other words, even if partially censored
-    const regex = new RegExp(word.split("").join("[*]*"), "gi");
+    // Build a regex that matches:
+    // - the raw word
+    // - partially censored versions (f*ck, f**k, s***, etc.)
+    // - the word inside larger strings
+    const pattern = word
+      .split("")
+      .map(ch => `[${ch}${ch.toUpperCase()}*]`)
+      .join("");
 
-    censored = censored.replace(regex, (match) => {
-      // Remove existing asterisks to normalise the profanity
+    const regex = new RegExp(pattern, "g");
+
+    output = output.replace(regex, (match) => {
+      // Normalize: remove existing asterisks
       const cleaned = match.replace(/\*/g, "");
 
+      // Style A: keep first + last letter, censor middle
       if (cleaned.length <= 2) {
         return cleaned[0] + "*";
       }
@@ -37,7 +46,7 @@ function censorProfanity(text) {
     });
   }
 
-  return censored;
+  return output;
 }
 
 
