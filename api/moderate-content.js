@@ -63,5 +63,4 @@ export default async function handler(request, response) {
             details: error.message,
         });
     }
-
 }
