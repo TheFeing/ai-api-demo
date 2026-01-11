@@ -116,6 +116,7 @@ Rules:
 - "categories_flagged": an array of high-level categories (e.g. "Violence", "Hate", "Harassment", "Sexual Content", "Self-harm", "Drugs", "Spam"). Use [] if is_safe is true.
 - Do NOT include any other fields.
 - Do NOT wrap the JSON in backticks or markdown.
+- Never wrap your response in backticks or markdown fences. Output ONLY raw JSON.
 
 Additional profanity rules:
 - ANY profanity (e.g., "fuck", "shit", "bitch", "dick", "cunt", "asshole") MUST be added to "categories_flagged" as "Profanity".
@@ -126,10 +127,16 @@ Additional profanity rules:
     });
 
     const rawText = result.response.text();
-
+    
+    // Remove Markdown fences if the model added them
+    const cleaned = rawText
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
+      .trim();
+    
     let parsed;
     try {
-      parsed = JSON.parse(rawText);
+      parsed = JSON.parse(cleaned);
     } catch (parseError) {
       console.error("Failed to parse model JSON:", rawText, parseError);
       return response.status(500).json({
