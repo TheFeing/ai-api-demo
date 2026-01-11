@@ -2,15 +2,12 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Ratelimit } from "@upstash/ratelimit";
 import { kv } from "@vercel/kv";
 
-// Rate limiting setup
 const ratelimit = new Ratelimit({
     redis: kv,
     limiter: Ratelimit.slidingWindow(5, "60 s"),
 });
 
-// Google GenAI client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
 const MAX_LENGTH = 1200;
 
 export default async function handler(request, response) {
@@ -18,14 +15,13 @@ export default async function handler(request, response) {
         return response.status(405).json({ error: "Method Not Allowed" });
     }
 
-    // Rate limit check
     const ip = request.headers["x-forwarded-for"] || "127.0.0.1";
     try {
         const { success, reset } = await ratelimit.limit(`ratelimit_${ip}`);
         if (!success) {
             return response.status(429).json({
                 error: "Rate limit exceeded",
-                message: "To keep this demo free, please wait a moment.",
+                message: "Please wait a moment.",
                 resetAt: new Date(reset).toLocaleTimeString("en-GB"),
             });
         }
@@ -36,11 +32,10 @@ export default async function handler(request, response) {
     const { userContent } = request.body;
 
     if (!userContent || typeof userContent !== "string" || userContent.length > MAX_LENGTH) {
-        return response.status(400).json({ error: "Invalid or overly long content." });
+        return response.status(400).json({ error: "Invalid content." });
     }
 
     try {
-        // Updated model with JSON enforcement
         const model = genAI.getGenerativeModel({ 
             model: "gemini-2.5-flash-lite",
             generationConfig: {
@@ -49,27 +44,26 @@ export default async function handler(request, response) {
         });
 
         const result = await model.generateContent({
-            contents: [
-                {
-                    role: "user",
-                    parts: [{ text: userContent }],
-                },
-            ],
+            contents: [{ role: "user", parts: [{ text: userContent }] }],
             systemInstruction:
-                "Evaluate safety and respond in JSON format only. Provide a 'safe' boolean and 'reason' string."
+                "Evaluate safety. Respond in JSON with: 'safe' (boolean), 'reason' (string), and 'categories_flagged' (array of strings). If safe, categories_flagged should be an empty array []."
         });
 
         const rawOutput = result.response.text();
-        
-        // Final safety layer: strip any potential Markdown code blocks
         const cleanJson = rawOutput.replace(/```json|```/g, "").trim();
+        const parsed = JSON.parse(cleanJson);
 
-        return response.status(200).json(JSON.parse(cleanJson));
+        // Fail-safe: Ensure categories_flagged exists before sending to frontend
+        if (!parsed.categories_flagged) {
+            parsed.categories_flagged = [];
+        }
+
+        return response.status(200).json(parsed);
 
     } catch (error) {
         console.error("Moderation Failure:", error);
         return response.status(500).json({
-            error: "Moderation service temporarily unavailable.",
+            error: "Service unavailable.",
             details: error.message,
         });
     }
