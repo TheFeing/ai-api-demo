@@ -50,8 +50,7 @@ export default async function handler(request, response) {
                 },
             ],
             systemInstruction:
-                "Evaluate safety and respond in JSON format. Provide a 'safe' boolean and 'reason' string.",
-            responseMimeType: "application/json",
+                "Evaluate safety and respond in JSON format. Provide a 'safe' boolean and 'reason' string."
         });
 
         const output = result.response.text();
@@ -64,4 +63,5 @@ export default async function handler(request, response) {
             details: error.message,
         });
     }
+
 }
